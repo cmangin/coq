@@ -572,7 +572,7 @@ let evars_to_goals p evm =
   else Some (!goals, evm)
 
 (** Making local hints  *)
-let make_resolve_hyp env sigma ~mode st flags pri decl =
+let make_resolve_hyp env sigma ~mode st pri decl =
   let id = NamedDecl.get_id decl in
   let cty = Evarutil.nf_evar sigma (NamedDecl.get_type decl) in
   let rec iscl env ty =
@@ -610,8 +610,14 @@ let make_resolve_hyp env sigma ~mode st flags pri decl =
         (hints @ List.map_filter
          (fun f -> try Some (f (c, cty, Univ.ContextSet.empty))
            with Failure _ | UserError _ -> None)
-         [make_exact_entry ~name env sigma pri false;
-          make_apply_entry ~name env sigma flags pri false])
+         begin match mode with
+         | EautoCompat ->
+            [ make_exact_entry_compat ~name env sigma pri false
+            ; make_apply_entry ~name env sigma (true,true,false) pri false ]
+         | _ ->
+            [ make_exact_entry ~name env sigma pri false
+            ; make_apply_entry ~name env sigma (true,false,false) pri false ]
+         end )
     else []
 
 let make_hints ~mode g st sign =
@@ -626,8 +632,7 @@ let make_hints ~mode g st sign =
           with Not_found -> true
         in
         if consider then
-          let hint =
-            pf_apply make_resolve_hyp g ~mode st (true,false,false) empty_hint_info hyp
+          let hint = pf_apply make_resolve_hyp g ~mode st empty_hint_info hyp
           in hint @ hints
         else hints)
       ([]) sign
@@ -697,8 +702,11 @@ module V85 = struct
             let env = Goal.V82.env s g' in
             let context = EConstr.named_context_of_val (Goal.V82.hyps s g') in
             let mode = if info.only_classes then OnlyClasses else Normal in
-            let hint = make_resolve_hyp ~mode env s (Hint_db.transparent_state info.hints)
-              (true,false,false) empty_hint_info (List.hd context) in
+            let hint =
+              make_resolve_hyp ~mode env s
+                               (Hint_db.transparent_state info.hints)
+                               empty_hint_info (List.hd context)
+            in
             let ldb = Hint_db.add_list env s hint info.hints in
             (g', { info with is_evar = None; hints = ldb;
                              auto_last_tac = lazy (str"intro") })) gls
@@ -1244,7 +1252,8 @@ module Search = struct
     let hint =
       make_resolve_hyp ~mode:info.mode env s
                        (Hint_db.transparent_state info.search_hints)
-                       (true,false,false) empty_hint_info decl in
+                       empty_hint_info decl
+    in
     let ldb = Hint_db.add_list env s hint info.search_hints in
     let info' =
       { info with search_hints = ldb; last_tac = lazy (str"intro");
