@@ -1447,6 +1447,33 @@ let typeclasses_eauto ?(mode=Normal) ?(st=full_transparent_state)
 	Refiner.tclFAIL 0 (str"Proof search failed") gl)
   else Search.eauto_tac ~st ~mode ?strategy ~depth ~dep:true dbs
 
+let eauto ?(strategy=Dfs) ?(evars = true) ~depth lems dbs =
+  let dbs =
+    match dbs with
+    | None -> Hints.current_pure_db ()
+    | Some dbs -> Hints.make_db_list dbs
+  in
+  let depth =
+    Some
+      begin match depth with
+      | None -> !default_search_depth
+      | Some d -> d
+      end
+  in
+  Proofview.Goal.enter
+    { enter =
+        fun gl ->
+        let env = Proofview.Goal.env gl in
+        let sigma = Tacmach.New.project gl in
+        let dbs =
+          match lems with
+          | [] -> dbs
+          | _ -> dbs @ [ make_local_hint_db env sigma evars lems ]
+        in
+        Search.eauto_tac ~mode:EautoCompat ~strategy ~depth ~dep:true dbs
+        |> Tacticals.New.tclTRY
+    }
+
 (** We compute dependencies via a union-find algorithm.
     Beware of the imperative effects on the partition structure,
     it should not be shared, but only used locally. *)
