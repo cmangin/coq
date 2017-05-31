@@ -592,7 +592,8 @@ let make_resolve_hyp env sigma ~mode st pri decl =
       let c = mkVar id in
       let name = PathHints [VarRef id] in
       let hints =
-        if is_class then
+        match mode with
+        | OnlyClasses when is_class ->
           let hints = build_subclasses ~check:false env sigma (VarRef id) empty_hint_info in
             (List.map_append
              (fun (path,info,c) ->
@@ -605,7 +606,7 @@ let make_resolve_hyp env sigma ~mode st pri decl =
                   (true,false,not !Flags.quiet) info false
                  (IsConstr (EConstr.of_constr c,Univ.ContextSet.empty)))
                hints)
-        else []
+        | _ -> []
       in
         (hints @ List.map_filter
          (fun f -> try Some (f (c, cty, Univ.ContextSet.empty))
