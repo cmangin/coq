@@ -185,11 +185,13 @@ let pr_ev evs ev =
 open Auto
 open Unification
 
-type mode = OnlyClasses | Normal | EautoCompat
+type eautoCompatFlags = { evars : bool }
+
+type mode = OnlyClasses | Normal | EautoCompat of eautoCompatFlags
 
 let auto_core_unif_flags ~mode st freeze =
   match mode with
-  | EautoCompat ->
+  | EautoCompat _ ->
   {
   modulo_conv_on_closed_terms = Some full_transparent_state; (* st1 *)
   use_metas_eagerly_in_conv_on_closed_terms = false;
@@ -227,7 +229,7 @@ let auto_unif_flags ~mode freeze st =
     merge_unify_flags = fl;
     subterm_unify_flags = fl;
     allow_K_in_toplevel_higher_order_unification = false;
-    resolve_evars = (match mode with EautoCompat -> true | _ -> false)
+    resolve_evars = (match mode with EautoCompat _ -> true | _ -> false)
 }
 
 let e_give_exact flags poly (c,clenv) =
@@ -442,6 +444,12 @@ and e_my_find_search ~mode db_list local_db secvars hdc complete sigma concl =
                Proofview.tclBIND (Proofview.with_shelf tac)
                   (fun (gls, ()) -> shelve_dependencies gls)
         | ERes_pf (term,cl) ->
+           begin match mode with
+           | EautoCompat { evars = false } ->
+              Proofview.Goal.enter
+                { enter = fun gl ->
+                          Tacticals.New.tclZEROMSG (str "eres_pf") }
+           | _ ->
            if get_typeclasses_filtered_unification () then
              let tac = (with_prods nprods poly (term,cl)
                   ({ enter = fun gl clenv ->
@@ -458,6 +466,7 @@ and e_my_find_search ~mode db_list local_db secvars hdc complete sigma concl =
              else
                Proofview.tclBIND (Proofview.with_shelf tac)
                   (fun (gls, ()) -> shelve_dependencies gls)
+           end
         | Give_exact (c,clenv) ->
            if get_typeclasses_filtered_unification () then
              let tac =
@@ -612,9 +621,9 @@ let make_resolve_hyp env sigma ~mode st pri decl =
          (fun f -> try Some (f (c, cty, Univ.ContextSet.empty))
            with Failure _ | UserError _ -> None)
          begin match mode with
-         | EautoCompat ->
+         | EautoCompat { evars } ->
             [ make_exact_entry_compat ~name env sigma pri false
-            ; make_apply_entry ~name env sigma (true,true,false) pri false ]
+            ; make_apply_entry ~name env sigma (evars,true,false) pri false ]
          | _ ->
             [ make_exact_entry ~name env sigma pri false
             ; make_apply_entry ~name env sigma (true,false,false) pri false ]
@@ -626,7 +635,7 @@ let make_hints ~mode g st sign =
     List.fold_left
       (fun hints hyp ->
         let consider =
-          match mode with Normal | EautoCompat -> true | OnlyClasses ->
+          match mode with Normal | EautoCompat _ -> true | OnlyClasses ->
           try let t = hyp |> NamedDecl.get_id |> Global.lookup_named |> NamedDecl.get_type in
               (* Section variable, reindex only if the type changed *)
               not (EConstr.eq_constr (project g) (EConstr.of_constr t) (NamedDecl.get_type hyp))
@@ -1281,7 +1290,7 @@ module Search = struct
                       (fun e ->
                         let depth =
                           match info.mode with
-                          | EautoCompat -> depth
+                          | EautoCompat _ -> depth
                           | _ -> succ depth
                         in
                         Proofview.tclOR (intro info (kont (depth)))
@@ -1373,7 +1382,8 @@ module Search = struct
                              (match mode with
                               | OnlyClasses -> str " in only_classes mode"
                               | Normal -> str " in regular mode"
-                              | EautoCompat -> str " in eauto-compat mode") ++
+                              | EautoCompat { evars = true } -> str " in eauto-compat mode"
+                              | EautoCompat { evars = false } -> str " in auto-compat mode") ++
                              match depth with None -> str ", unbounded"
                                             | Some i -> str ", with depth limit " ++ int i));
     tac
@@ -1471,7 +1481,8 @@ let eauto ?(strategy=Dfs) ?(evars = true) ~depth lems dbs =
           | [] -> dbs
           | _ -> dbs @ [ make_local_hint_db env sigma evars lems ]
         in
-        Search.eauto_tac ~mode:EautoCompat ~strategy ~depth ~dep:true dbs
+        Search.eauto_tac ~mode:(EautoCompat { evars })
+                         ~strategy ~depth ~dep:true dbs
         |> Tacticals.New.tclTRY
     }
 

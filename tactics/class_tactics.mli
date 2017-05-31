@@ -23,7 +23,9 @@ type search_strategy = Dfs | Bfs
 
 val set_typeclasses_strategy : search_strategy -> unit
 
-type mode = OnlyClasses | Normal | EautoCompat
+type eautoCompatFlags = { evars : bool }
+
+type mode = OnlyClasses | Normal | EautoCompat of eautoCompatFlags
 
 val typeclasses_eauto : ?mode:mode -> ?st:transparent_state ->
                         ?strategy:search_strategy -> depth:(Int.t option) ->
