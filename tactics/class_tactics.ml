@@ -185,7 +185,7 @@ let pr_ev evs ev =
 open Auto
 open Unification
 
-type eautoCompatFlags = { evars : bool }
+type eautoCompatFlags = { evars : bool; max_cost : int option }
 
 type mode = OnlyClasses | Normal | EautoCompat of eautoCompatFlags
 
@@ -424,6 +424,9 @@ and e_my_find_search ~mode db_list local_db secvars hdc complete sigma concl =
   in
   let tac_of_hint =
     fun (flags, {pri = b; pat = p; poly = poly; code = t; secvars; name = name}) ->
+    match mode with
+    | EautoCompat { max_cost = Some cost } when b > cost -> None
+    | _ ->
       let tac = function
         | Res_pf (term,cl) ->
            if get_typeclasses_filtered_unification () then
@@ -495,10 +498,12 @@ and e_my_find_search ~mode db_list local_db secvars hdc complete sigma concl =
            str " with pattern " ++ Printer.pr_constr_pattern pat
         | _ -> mt ()
       in
-        match repr_hint t with
+      Some
+        begin match repr_hint t with
         | Extern _ -> (tac, b, true, name, lazy (pr_hint t ++ pp))
         | _ -> (tac, b, false, name, lazy (pr_hint t ++ pp))
-  in List.map tac_of_hint hintl
+        end
+  in List.map_filter tac_of_hint hintl
 
 and e_trivial_resolve ~mode db_list local_db secvars sigma concl =
   let hd = try Some (decompose_app_bound sigma concl) with Bound -> None in
@@ -1458,7 +1463,7 @@ let typeclasses_eauto ?(mode=Normal) ?(st=full_transparent_state)
 	Refiner.tclFAIL 0 (str"Proof search failed") gl)
   else Search.eauto_tac ~st ~mode ?strategy ~depth ~dep:true dbs
 
-let eauto ?(strategy=Dfs) ?(evars = true) ~depth lems dbs =
+let eauto ?(strategy=Dfs) ?(evars = true) ?max_cost ~depth lems dbs =
   let dbs =
     match dbs with
     | None -> Hints.current_pure_db ()
@@ -1481,7 +1486,7 @@ let eauto ?(strategy=Dfs) ?(evars = true) ~depth lems dbs =
           | [] -> dbs
           | _ -> dbs @ [ make_local_hint_db env sigma evars lems ]
         in
-        Search.eauto_tac ~mode:(EautoCompat { evars })
+        Search.eauto_tac ~mode:(EautoCompat { evars; max_cost })
                          ~strategy ~depth ~dep:true dbs
         |> Tacticals.New.tclTRY
     }

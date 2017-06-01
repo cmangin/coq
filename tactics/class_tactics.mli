@@ -23,7 +23,7 @@ type search_strategy = Dfs | Bfs
 
 val set_typeclasses_strategy : search_strategy -> unit
 
-type eautoCompatFlags = { evars : bool }
+type eautoCompatFlags = { evars : bool; max_cost : int option }
 
 type mode = OnlyClasses | Normal | EautoCompat of eautoCompatFlags
 
@@ -31,7 +31,8 @@ val typeclasses_eauto : ?mode:mode -> ?st:transparent_state ->
                         ?strategy:search_strategy -> depth:(Int.t option) ->
                         Hints.hint_db_name list -> unit Proofview.tactic
 
-val eauto : ?strategy:search_strategy -> ?evars:bool -> depth:(Int.t option) ->
+val eauto : ?strategy:search_strategy -> ?evars:bool -> ?max_cost:int ->
+            depth:(Int.t option) ->
             Tactypes.delayed_open_constr list ->
             Hints.hint_db_name list option ->
             unit Proofview.tactic
