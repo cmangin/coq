@@ -247,16 +247,10 @@ let e_give_exact flags poly (c,clenv) =
   Sigma.Unsafe.of_pair (Clenvtac.unify ~flags t1 <*> exact_no_check c, sigma)
   end }
 
-let unify_e_resolve poly flags = { enter = begin fun gls (c,_,clenv) ->
-  let clenv', c = connect_hint_clenv poly c clenv gls in
-  let clenv' = clenv_unique_resolver ~flags clenv' gls in
-    Clenvtac.clenv_refine true ~with_classes:false clenv'
-  end }
-
-let unify_resolve poly flags = { enter = begin fun gls (c,_,clenv) ->
+let unify_resolve ~evars ~poly flags = { enter = begin fun gls (c,_,clenv) ->
   let clenv', _ = connect_hint_clenv poly c clenv gls in
   let clenv' = clenv_unique_resolver ~flags clenv' gls in
-    Clenvtac.clenv_refine false ~with_classes:false clenv'
+    Clenvtac.clenv_refine evars ~with_classes:false clenv'
   end }
 
 (** Application of a lemma using [refine] instead of the old [w_unify] *)
@@ -439,7 +433,9 @@ and e_my_find_search ~mode db_list local_db secvars hdc complete sigma concl =
              in Tacticals.New.tclTHEN tac Proofview.shelve_unifiable
            else
              let tac =
-               with_prods nprods poly (term,cl) (unify_resolve poly flags) in
+               with_prods nprods poly (term,cl)
+                          (unify_resolve ~evars:false ~poly flags)
+             in
              if get_typeclasses_legacy_resolution () then
                Tacticals.New.tclTHEN tac Proofview.shelve_unifiable
              else
@@ -454,7 +450,9 @@ and e_my_find_search ~mode db_list local_db secvars hdc complete sigma concl =
              Tacticals.New.tclTHEN tac Proofview.shelve_unifiable
            else
              let tac =
-               with_prods nprods poly (term,cl) (unify_e_resolve poly flags) in
+               with_prods nprods poly (term,cl)
+                          (unify_resolve ~evars:true ~poly flags)
+             in
              if get_typeclasses_legacy_resolution () then
                Tacticals.New.tclTHEN tac Proofview.shelve_unifiable
              else
@@ -470,7 +468,9 @@ and e_my_find_search ~mode db_list local_db secvars hdc complete sigma concl =
            else
              e_give_exact flags poly (c,clenv)
       | Res_pf_THEN_trivial_fail (term,cl) ->
-         let fst = with_prods nprods poly (term,cl) (unify_e_resolve poly flags) in
+         let fst = with_prods nprods poly (term,cl)
+                              (unify_resolve ~evars:true ~poly flags)
+         in
          let snd = if complete then Tacticals.New.tclIDTAC
                    else e_trivial_fail_db ~mode db_list local_db secvars in
          Tacticals.New.tclTHEN fst snd
@@ -1693,7 +1693,7 @@ let autoapply c i =
     (Hints.Hint_db.transparent_state (Hints.searchtable_map i)) in
   let cty = Tacmach.New.pf_unsafe_type_of gl c in
   let ce = mk_clenv_from gl (c,cty) in
-    (unify_e_resolve false flags).enter gl
+    (unify_resolve ~evars:true ~poly:false flags).enter gl
                                  ((c,cty,Univ.ContextSet.empty),0,ce) <*>
       Proofview.tclEVARMAP >>= (fun sigma ->
       let sigma = Typeclasses.mark_unresolvables ~filter:Typeclasses.all_goals sigma in
