@@ -922,9 +922,7 @@ let check_one_fix renv recpos trees def =
                 | LocalAssum _ ->
                     List.iter (check_rec_call renv []) l
                 | LocalDef (_,c,_) ->
-                    try List.iter (check_rec_call renv []) l
-                    with FixGuardError _ ->
-                      check_rec_call renv stack (applist(lift p c,l))
+                    check_rec_call renv stack (applist(lift p c,l))
               end
 		
         | Case (ci,p,c_0,lrest) ->
@@ -968,10 +966,8 @@ let check_one_fix renv recpos trees def =
 
         | Const (kn,u as cu) ->
             if evaluable_constant kn renv.env then
-              try List.iter (check_rec_call renv []) l
-              with (FixGuardError _ ) ->
-		let value = (applist(constant_value_in renv.env cu, l)) in
-	        check_rec_call renv stack value
+              let value = (applist(constant_value_in renv.env cu, l)) in
+              check_rec_call renv stack value
 	    else List.iter (check_rec_call renv []) l
 
         | Lambda (x,a,b) ->
@@ -1005,9 +1001,7 @@ let check_one_fix renv recpos trees def =
               | LocalAssum _ ->
                   List.iter (check_rec_call renv []) l
               | LocalDef (_,c,_) ->
-                  try List.iter (check_rec_call renv []) l
-                  with (FixGuardError _) -> 
-		    check_rec_call renv stack (applist(c,l))
+		  check_rec_call renv stack (applist(c,l))
             end
 
 	| Sort _ ->
