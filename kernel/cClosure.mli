@@ -48,6 +48,7 @@ module type RedFlagsSig = sig
   val fZETA : red_kind
   val fCONST : Constant.t -> red_kind
   val fVAR : Id.t -> red_kind
+  val fLINEAR : red_kind
 
   (** No reduction at all *)
   val no_red : reds
@@ -82,6 +83,7 @@ val beta              : reds
 val betadeltazeta     : reds
 val betaiota          : reds
 val betaiotazeta      : reds
+val betalinear        : reds
 val betazeta          : reds
 val delta             : reds
 val zeta              : reds

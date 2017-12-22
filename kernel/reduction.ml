@@ -150,6 +150,20 @@ let whd_all env t =
     | Rel _ | Cast _ | LetIn _ | Case _ | Proj _ | Const _ | Var _ ->
         whd_val (create_clos_infos all env) (inject t)
 
+let whd_betalinear env t =
+  match kind t with
+    | (Sort _|Meta _|Evar _|Ind _|Construct _|
+       Prod _|Lambda _|Fix _|CoFix _) -> t
+    | App (c, _) ->
+      begin match kind c with
+      | Ind _ | Construct _ | Evar _ | Meta _ -> t
+      | Sort _ | Rel _ | Var _ | Cast _ | Prod _ | Lambda _ | LetIn _ | App _
+        | Const _ |Case _ | Fix _ | CoFix _ | Proj _ ->
+         whd_val (create_clos_infos betalinear env) (inject t)
+      end
+    | Rel _ | Cast _ | LetIn _ | Case _ | Proj _ | Const _ | Var _ ->
+        whd_val (create_clos_infos betalinear env) (inject t)
+
 let whd_allnolet env t =
   match kind t with
     | (Sort _|Meta _|Evar _|Ind _|Construct _|

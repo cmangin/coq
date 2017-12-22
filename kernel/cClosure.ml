@@ -41,16 +41,18 @@ let nb_match = ref 0
 let fix = ref 0
 let cofix = ref 0
 let prune = ref 0
+let linear = ref 0
 
 let reset () =
   beta := 0; delta := 0; zeta := 0; evar := 0; nb_match := 0; fix := 0;
-  cofix := 0; evar := 0; prune := 0
+  cofix := 0; evar := 0; prune := 0; linear := 0
 
 let stop() =
   Feedback.msg_debug (str "[Reds: beta=" ++ int !beta ++ str" delta=" ++ int !delta ++
 	 str " eta=" ++ int !eta ++ str" zeta=" ++ int !zeta ++ str" evar=" ++
 	 int !evar ++ str" match=" ++ int !nb_match ++ str" fix=" ++ int !fix ++
          str " cofix=" ++ int !cofix ++ str" prune=" ++ int !prune ++
+         str " linear=" ++ int !linear ++
 	 str"]")
 
 let incr_cnt red cnt =
@@ -87,6 +89,7 @@ module type RedFlagsSig = sig
   val fZETA : red_kind
   val fCONST : Constant.t -> red_kind
   val fVAR : Id.t -> red_kind
+  val fLINEAR : red_kind
   val no_red : reds
   val red_add : reds -> red_kind -> reds
   val red_sub : reds -> red_kind -> reds
@@ -110,11 +113,12 @@ module RedFlags = (struct
     r_zeta : bool;
     r_match : bool;
     r_fix : bool;
-    r_cofix : bool }
+    r_cofix : bool;
+    r_linear : bool }
 
   type red_kind = BETA | DELTA | ETA | MATCH | FIX
               | COFIX | ZETA
-	      | CONST of Constant.t | VAR of Id.t
+	      | CONST of Constant.t | VAR of Id.t | LINEAR
   let fBETA = BETA
   let fDELTA = DELTA
   let fETA = ETA
@@ -124,6 +128,7 @@ module RedFlags = (struct
   let fZETA = ZETA
   let fCONST kn  = CONST kn
   let fVAR id  = VAR id
+  let fLINEAR = LINEAR
   let no_red = {
     r_beta = false;
     r_delta = false;
@@ -132,7 +137,8 @@ module RedFlags = (struct
     r_zeta = false;
     r_match = false;
     r_fix = false;
-    r_cofix = false }
+    r_cofix = false;
+    r_linear = false }
 
   let red_add red = function
     | BETA -> { red with r_beta = true }
@@ -148,6 +154,7 @@ module RedFlags = (struct
     | VAR id ->
 	let (l1,l2) = red.r_const in
 	{ red with r_const = Id.Pred.add id l1, l2 }
+    | LINEAR -> {red with r_linear = true }
 
   let red_sub red = function
     | BETA -> { red with r_beta = false }
@@ -163,6 +170,7 @@ module RedFlags = (struct
     | VAR id ->
 	let (l1,l2) = red.r_const in
 	{ red with r_const = Id.Pred.remove id l1, l2 }
+    | LINEAR -> {red with r_linear = false }
 
   let red_add_transparent red tr =
     { red with r_const = tr }
@@ -186,6 +194,7 @@ module RedFlags = (struct
     | COFIX -> incr_cnt red.r_cofix cofix
     | DELTA -> (* Used for Rel/Var defined in context *)
 	incr_cnt red.r_delta delta
+    | LINEAR -> incr_cnt red.r_linear linear
 
   let red_projection red p =
     if Projection.unfolded p then true
@@ -201,6 +210,7 @@ let beta = mkflags [fBETA]
 let betadeltazeta = mkflags [fBETA;fDELTA;fZETA]
 let betaiota = mkflags [fBETA;fMATCH;fFIX;fCOFIX]
 let betaiotazeta = mkflags [fBETA;fMATCH;fFIX;fCOFIX;fZETA]
+let betalinear = mkflags [fBETA;fFIX;fCOFIX;fLINEAR]
 let betazeta = mkflags [fBETA;fZETA]
 let delta = mkflags [fDELTA]
 let zeta = mkflags [fZETA]
@@ -913,7 +923,14 @@ let rec knr info m stk =
   match m.term with
   | FLambda(n,tys,f,e) when red_set info.i_flags fBETA ->
       (match get_args n tys f e stk with
-          Inl e', s -> knit info e' f s
+          Inl e', s ->
+            if red_set info.i_flags fLINEAR &&
+              let rec aux i =
+                if Int.equal i 0 then false
+                else noccurn i f || aux (i-1)
+              in aux n then (m, stk)
+            else
+              knit info e' f s
         | Inr lam, s -> (lam,s))
   | FFlex(ConstKey (kn,_ as c)) when red_set info.i_flags (fCONST kn) ->
       (match ref_value_cache info (ConstKey c) with
@@ -954,7 +971,8 @@ let rec knr info m stk =
             knit info fxe fxbd (args@stk')
         | (_,args,s) -> (m,args@s))
   | FLetIn (_,v,_,bd,e) when red_set info.i_flags fZETA ->
-      knit info (subs_cons([|v|],e)) bd stk
+      if red_set info.i_flags fLINEAR && noccurn 1 bd then (m, stk)
+      else knit info (subs_cons([|v|],e)) bd stk
   | FEvar(ev,env) ->
       (match evar_value info.i_cache ev with
           Some c -> knit info env c stk

@@ -485,16 +485,22 @@ let make_renv env recarg tree =
     rel_min = recarg+2; (* recarg = 0 ==> Rel 1 -> recarg; Rel 2 -> fix *)
     genv = [Lazy.from_val(Subterm(Large,tree))] }
 
-let push_var renv (x,ty,spec) =
-  { env = push_rel (LocalAssum (x,ty)) renv.env;
+let push_decl renv (decl,spec) =
+  { env = push_rel decl renv.env;
     rel_min = renv.rel_min+1;
     genv = spec:: renv.genv }
+
+let push_var renv (x,ty,spec) =
+  push_decl renv (LocalAssum (x,ty), spec)
 
 let assign_var_spec renv (i,spec) =
   { renv with genv = List.assign renv.genv (i-1) spec }
 
 let push_var_renv renv (x,ty) =
   push_var renv (x,ty,lazy Not_subterm)
+
+let push_def renv (x,d,ty,spec) =
+  push_decl renv (LocalDef (x,d,ty), spec)
 
 (* Fetch recursive information about a variable p *)
 let subterm_var p renv =
@@ -897,7 +903,7 @@ let check_one_fix renv recpos trees def =
     (* if [t] does not make recursive calls, it is guarded: *)
     if noccur_with_meta renv.rel_min nfi t then ()
     else
-      let (f,l) = decompose_app (whd_betaiotazeta renv.env t) in
+      let (f,l) = decompose_app (whd_betalinear renv.env t) in
       match kind f with
         | Rel p ->
             (* Test if [p] is a fixpoint (recursive call) *)
@@ -970,6 +976,12 @@ let check_one_fix renv recpos trees def =
                    else check_rec_call renv' [] body)
                 bodies
 
+        | LetIn (x,d,a,b) ->
+            List.iter (check_rec_call renv []) (d :: a :: l);
+            let stack' = push_stack_closures renv l stack in
+            let spec, stack'' = extract_stack renv a stack' in
+            check_rec_call (push_def renv (x,d,a,spec)) stack'' b
+
         | Const (kn,u as cu) ->
             if evaluable_constant kn renv.env then
               try List.iter (check_rec_call renv []) l
@@ -979,10 +991,11 @@ let check_one_fix renv recpos trees def =
 	    else List.iter (check_rec_call renv []) l
 
         | Lambda (x,a,b) ->
-            let () = assert (List.is_empty l) in
+            List.iter (check_rec_call renv []) l;
 	    check_rec_call renv [] a ;
-	    let spec, stack' = extract_stack renv a stack in
-	    check_rec_call (push_var renv (x,a,spec)) stack' b
+            let stack' = push_stack_closures renv l stack in
+	    let spec, stack'' = extract_stack renv a stack' in
+	    check_rec_call (push_var renv (x,a,spec)) stack'' b
 
         | Prod (x,a,b) ->
             let () = assert (List.is_empty l && List.is_empty stack) in
@@ -1020,7 +1033,7 @@ let check_one_fix renv recpos trees def =
         (* l is not checked because it is considered as the meta's context *)
         | (Evar _ | Meta _) -> ()
 
-        | (App _ | LetIn _ | Cast _) -> assert false (* beta zeta reduction *)
+        | (App _ | Cast _) -> assert false (* beta zeta reduction *)
 
   and check_nested_fix_body renv decr recArgsDecrArg body =
     if Int.equal decr 0 then

@@ -16,6 +16,7 @@ open Environ
 
 val whd_betaiotazeta        : env -> constr -> constr
 val whd_all                 : env -> constr -> constr
+val whd_betalinear  : env -> constr -> constr
 val whd_allnolet : env -> constr -> constr
 
 val whd_betaiota     : env -> constr -> constr
