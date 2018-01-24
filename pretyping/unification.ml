@@ -1126,6 +1126,10 @@ let unify_0 env sigma = unify_0_with_initial_metas (sigma,[],[]) true env
 let left = true
 let right = false
 
+let isEvar_or_Meta sigma c = match EConstr.kind sigma c with
+| Evar _ | Meta _ -> true
+| _ -> false
+
 let rec unify_with_eta keptside flags env sigma c1 c2 =
 (* Question: try whd_all on ci if not two lambdas? *)
   match EConstr.kind sigma c1, EConstr.kind sigma c2 with
@@ -1135,12 +1139,12 @@ let rec unify_with_eta keptside flags env sigma c1 c2 =
     let side,(sigma,metas',evars') =
       unify_with_eta keptside flags env' sigma c1' c2'
     in (side,(sigma,metas@metas',evars@evars'))
-  | (Lambda (na,t,c1'),_)->
+  | (Lambda (na,t,c1'),_) when not (isEvar_or_Meta sigma c2) ->
     let env' = push_rel_assum (na,t) env in
     let side = left in (* expansion on the right: we keep the left side *)
       unify_with_eta side flags env' sigma
       c1' (mkApp (lift 1 c2,[|mkRel 1|]))
-  | (_,Lambda (na,t,c2')) ->
+  | (_,Lambda (na,t,c2')) when not (isEvar_or_Meta sigma c1) ->
     let env' = push_rel_assum (na,t) env in
     let side = right in (* expansion on the left: we keep the right side *)
       unify_with_eta side flags env' sigma
@@ -1452,10 +1456,6 @@ let w_unify_meta_types env ?(flags=default_unify_flags ()) evd =
 
 let head_app sigma m =
   fst (whd_nored_state sigma (m, Stack.empty))
-
-let isEvar_or_Meta sigma c = match EConstr.kind sigma c with
-| Evar _ | Meta _ -> true
-| _ -> false
 
 let check_types env flags (sigma,_,_ as subst) m n =
   if isEvar_or_Meta sigma (head_app sigma m) then
